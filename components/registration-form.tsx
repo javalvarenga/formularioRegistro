@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { CheckIcon, ArrowLeftIcon, ArrowRightIcon, AlertCircle } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { FileUpload } from "./file-upload"
 
 type FormData = {
@@ -22,6 +23,7 @@ type FormData = {
   institucion: string
   aceptaTerminos: boolean
   pagoEfectivo: boolean // Nuevo campo para método de pago
+  tallaCamisa: string // Nuevo campo para talla de camisa
 
   // Campos específicos por tipo de participante
   carnetPrefijo?: string // Solo para estudiantes
@@ -46,6 +48,7 @@ const initialFormData: FormData = {
   institucion: "",
   aceptaTerminos: false,
   pagoEfectivo: false, // Inicialmente, no es pago en efectivo
+  tallaCamisa: "", // Inicialmente vacío
   carnetPrefijo: "",
   carnetAnio: "",
   carnetNumero: "",
@@ -103,6 +106,10 @@ export function RegistrationForm() {
 
       if (touched.fechaNacimiento && !formData.fechaNacimiento) {
         newErrors.fechaNacimiento = "La fecha de nacimiento es obligatoria"
+      }
+
+      if (touched.tallaCamisa && !formData.tallaCamisa) {
+        newErrors.tallaCamisa = "Debe seleccionar una talla de camisa"
       }
 
       // Solo validar boleta de pago si no es pago en efectivo
@@ -216,7 +223,7 @@ export function RegistrationForm() {
       case 0:
         return ["tipoParticipante"]
       case 1:
-        const personalFields = ["nombre", "email", "telefono", "fechaNacimiento", "pagoEfectivo"]
+        const personalFields = ["nombre", "email", "telefono", "fechaNacimiento", "tallaCamisa", "pagoEfectivo"]
         if (!formData.pagoEfectivo) {
           personalFields.push("boletaPago")
         }
@@ -560,6 +567,34 @@ export function RegistrationForm() {
                 )}
               </div>
 
+              {/* Campo para talla de camisa */}
+              <div>
+                <Label htmlFor="tallaCamisa" className="flex items-center">
+                  Talla de Camisa <span className="text-red-500 ml-1">*</span>
+                </Label>
+                <Select
+                  value={formData.tallaCamisa}
+                  onValueChange={(value) => handleSelectChange("tallaCamisa", value)}
+                >
+                  <SelectTrigger className={errors.tallaCamisa ? "border-red-500" : ""}>
+                    <SelectValue placeholder="Seleccione una talla" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="XS">XS</SelectItem>
+                    <SelectItem value="S">S</SelectItem>
+                    <SelectItem value="M">M</SelectItem>
+                    <SelectItem value="L">L</SelectItem>
+                    <SelectItem value="XL">XL</SelectItem>
+                    <SelectItem value="XXL">XXL</SelectItem>
+                  </SelectContent>
+                </Select>
+                {errors.tallaCamisa && (
+                  <p className="text-red-500 text-sm mt-1 flex items-center">
+                    <AlertCircle className="w-4 h-4 mr-1" /> {errors.tallaCamisa}
+                  </p>
+                )}
+              </div>
+
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
                   <Checkbox
@@ -689,6 +724,11 @@ export function RegistrationForm() {
                     </div>
 
                     <div className="py-2 grid grid-cols-3">
+                      <dt className="text-sm font-medium text-gray-500">Talla de Camisa</dt>
+                      <dd className="text-sm text-gray-900 col-span-2">{formData.tallaCamisa || "No seleccionada"}</dd>
+                    </div>
+
+                    <div className="py-2 grid grid-cols-3">
                       <dt className="text-sm font-medium text-gray-500">Método de Pago</dt>
                       <dd className="text-sm text-gray-900 col-span-2">
                         {formData.pagoEfectivo ? "Efectivo (pendiente)" : "Transferencia/Depósito"}
@@ -722,6 +762,7 @@ export function RegistrationForm() {
                     {formData.tipoParticipante === "catedratico" && (
                       <>{/* Se eliminan los campos de departamento y cargo */}</>
                     )}
+
                   </dl>
                 </CardContent>
               </Card>
@@ -774,4 +815,3 @@ export function RegistrationForm() {
     </div>
   )
 }
-
