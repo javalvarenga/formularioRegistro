@@ -11,10 +11,17 @@ import { CheckIcon, ArrowLeftIcon, ArrowRightIcon, AlertCircle } from "lucide-re
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { FileUpload } from "./file-upload"
+import { api } from "@/services/api" // Asegurate que `api` esté bien importado
+
+// Tipos adaptados según el modelo de datos requerido
+type ParticipantType = "E" | "C" | "I"
+type PaymentType = "E" | "D"
+type PaymentStatus = "C" | "P" | "R" | "V"
+type ShirtSize = "XL" | "L" | "M" | "S"
 
 type FormData = {
   // Campos comunes
-  tipoParticipante: string
+  tipoParticipante: ParticipantType
   nombre: string
   email: string
   telefono: string
@@ -22,16 +29,14 @@ type FormData = {
   boletaPago: File | null
   institucion: string
   aceptaTerminos: boolean
-  pagoEfectivo: boolean // Nuevo campo para método de pago
-  tallaCamisa: string // Nuevo campo para talla de camisa
+  tipoPago: PaymentType
+  talla: ShirtSize
 
   // Campos específicos por tipo de participante
-  carnetPrefijo?: string // Solo para estudiantes
-  carnetAnio?: string // Solo para estudiantes
-  carnetNumero?: string // Solo para estudiantes
-  departamento?: string // Solo para catedráticos
-  cargo?: string // Solo para catedráticos
-  rol?: string // Opcional para todos
+  carnetCarrera?: string
+  carnetAnio?: string
+  carnetSerie?: string
+  rol: string
 }
 
 type Errors = {
@@ -39,7 +44,7 @@ type Errors = {
 }
 
 const initialFormData: FormData = {
-  tipoParticipante: "estudiante",
+  tipoParticipante: "E",
   nombre: "",
   email: "",
   telefono: "",
@@ -47,14 +52,19 @@ const initialFormData: FormData = {
   boletaPago: null,
   institucion: "",
   aceptaTerminos: false,
-  pagoEfectivo: false, // Inicialmente, no es pago en efectivo
-  tallaCamisa: "", // Inicialmente vacío
-  carnetPrefijo: "",
+  tipoPago: "D",
+  talla: "M",
+  carnetCarrera: "",
   carnetAnio: "",
-  carnetNumero: "",
-  departamento: "",
-  cargo: "",
+  carnetSerie: "",
   rol: "",
+}
+
+// Mapeo de tipos de participante para la UI
+const participantTypeLabels = {
+  E: "Estudiante",
+  C: "Catedrático",
+  I: "Invitado",
 }
 
 export function RegistrationForm() {
@@ -63,6 +73,7 @@ export function RegistrationForm() {
   const [errors, setErrors] = useState<Errors>({})
   const [submitted, setSubmitted] = useState(false)
   const [touched, setTouched] = useState<{ [key: string]: boolean }>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const steps = [
     { title: "Tipo de Participante", description: "Seleccione su rol en el evento" },
@@ -108,21 +119,21 @@ export function RegistrationForm() {
         newErrors.fechaNacimiento = "La fecha de nacimiento es obligatoria"
       }
 
-      if (touched.tallaCamisa && !formData.tallaCamisa) {
-        newErrors.tallaCamisa = "Debe seleccionar una talla de camisa"
+      if (touched.talla && !formData.talla) {
+        newErrors.talla = "Debe seleccionar una talla de camisa"
       }
 
       // Solo validar boleta de pago si no es pago en efectivo
-      if (touched.boletaPago && !formData.boletaPago && !formData.pagoEfectivo) {
+      if (touched.boletaPago && !formData.boletaPago && formData.tipoPago === "D") {
         newErrors.boletaPago = "La boleta de pago es obligatoria"
       }
 
       // Validaciones específicas por tipo de participante
-      if (formData.tipoParticipante === "estudiante") {
-        if (touched.carnetPrefijo && !formData.carnetPrefijo) {
-          newErrors.carnetPrefijo = "El prefijo del carnet es obligatorio"
-        } else if (touched.carnetPrefijo && !/^\d{1,4}$/.test(formData.carnetPrefijo || "")) {
-          newErrors.carnetPrefijo = "El prefijo debe ser un número de 1 a 4 dígitos"
+      if (formData.tipoParticipante === "E") {
+        if (touched.carnetCarrera && !formData.carnetCarrera) {
+          newErrors.carnetCarrera = "El prefijo del carnet es obligatorio"
+        } else if (touched.carnetCarrera && !/^\d{1,4}$/.test(formData.carnetCarrera || "")) {
+          newErrors.carnetCarrera = "El prefijo debe ser un número de 1 a 4 dígitos"
         }
 
         if (touched.carnetAnio && !formData.carnetAnio) {
@@ -131,10 +142,10 @@ export function RegistrationForm() {
           newErrors.carnetAnio = "El año debe ser un número de 2 dígitos"
         }
 
-        if (touched.carnetNumero && !formData.carnetNumero) {
-          newErrors.carnetNumero = "El número del carnet es obligatorio"
-        } else if (touched.carnetNumero && !/^\d{4}$/.test(formData.carnetNumero || "")) {
-          newErrors.carnetNumero = "El número debe ser un número de 4 dígitos"
+        if (touched.carnetSerie && !formData.carnetSerie) {
+          newErrors.carnetSerie = "El número del carnet es obligatorio"
+        } else if (touched.carnetSerie && !/^\d{4}$/.test(formData.carnetSerie || "")) {
+          newErrors.carnetSerie = "El número debe ser un número de 4 dígitos"
         }
       }
     } else if (currentStep === 2) {
@@ -197,8 +208,67 @@ export function RegistrationForm() {
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const enviarDatos = async () => {
+    try {
+      setIsSubmitting(true)
+
+      // Generar un código QR único (simplificado para este ejemplo)
+      const codigoQR = `QR-${Date.now()}-${Math.floor(Math.random() * 1000)}.png`
+
+      // Convertir los campos de carnet a números o null
+      const carnetCarrera =
+        formData.tipoParticipante === "E" && formData.carnetCarrera ? Number(formData.carnetCarrera) : null
+
+      const carnetAnio = formData.tipoParticipante === "E" && formData.carnetAnio ? Number(formData.carnetAnio) : null
+
+      const carnetSerie =
+        formData.tipoParticipante === "E" && formData.carnetSerie ? Number(formData.carnetSerie) : null
+
+      // Convertir teléfono a número
+      const telefono = Number(formData.telefono.replace(/\D/g, ""))
+
+      // Preparar el nombre del archivo de boleta o string vacío
+      const boleta = formData.boletaPago ? formData.boletaPago.name : ""
+
+      // Llamar a la función createParticipant con los parámetros en el orden correcto
+      const response = await api.post("/participants", {
+        tipoParticipante: formData.tipoParticipante,
+        nombre: formData.nombre,
+        carnetCarrera,
+        carnetAnio,
+        carnetSerie,
+        correoElectronico: formData.email,
+        telefono,
+        talla: formData.talla,
+        fechaNacimiento: formData.fechaNacimiento,
+        institucion: formData.institucion || null,
+        Rol: formData.rol || formData.tipoParticipante, // Usar el rol ingresado o el tipo de participante como respaldo
+        codigoQR,
+        certificadoEnviado: false, // Por defecto, no se ha enviado certificado
+        tipoPago: formData.tipoPago,
+        boleta,
+        estadoPago: "P", // Pendiente por defecto
+      })
+
+      console.log("Participante registrado:", response.data)
+      return true
+    } catch (error) {
+      console.error("Error al registrar participante:", error)
+      return false
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Verificar que estemos en el último paso
+    if (currentStep < steps.length - 1) {
+      // En lugar de enviar, simplemente avanza al siguiente paso
+      nextStep()
+      return
+    }
 
     // Marcar todos los campos como tocados
     const allFields = Object.keys(formData)
@@ -210,10 +280,12 @@ export function RegistrationForm() {
 
     // Validar antes de enviar
     const isValid = validateForm()
+    if (!isValid) return
 
-    if (isValid) {
+    // Enviar los datos al backend
+    const success = await enviarDatos()
+    if (success) {
       setSubmitted(true)
-      console.log("Form submitted:", formData)
     }
   }
 
@@ -223,12 +295,12 @@ export function RegistrationForm() {
       case 0:
         return ["tipoParticipante"]
       case 1:
-        const personalFields = ["nombre", "email", "telefono", "fechaNacimiento", "tallaCamisa", "pagoEfectivo"]
-        if (!formData.pagoEfectivo) {
+        const personalFields = ["nombre", "email", "telefono", "fechaNacimiento", "talla", "tipoPago"]
+        if (formData.tipoPago === "D") {
           personalFields.push("boletaPago")
         }
-        if (formData.tipoParticipante === "estudiante") {
-          personalFields.push("carnetPrefijo", "carnetAnio", "carnetNumero")
+        if (formData.tipoParticipante === "E") {
+          personalFields.push("carnetCarrera", "carnetAnio", "carnetSerie")
         }
         return personalFields
       case 2:
@@ -242,15 +314,15 @@ export function RegistrationForm() {
 
   // Formatear el carnet completo
   const getFormattedCarnet = () => {
-    if (formData.tipoParticipante !== "estudiante") return "N/A"
+    if (formData.tipoParticipante !== "E") return "N/A"
 
-    const prefijo = formData.carnetPrefijo || ""
+    const carrera = formData.carnetCarrera || ""
     const anio = formData.carnetAnio || ""
-    const numero = formData.carnetNumero || ""
+    const serie = formData.carnetSerie || ""
 
-    if (!prefijo && !anio && !numero) return "No especificado"
+    if (!carrera && !anio && !serie) return "No especificado"
 
-    return `${prefijo}-${anio}-${numero}`
+    return `${carrera}-${anio}-${serie}`
   }
 
   return (
@@ -343,7 +415,7 @@ export function RegistrationForm() {
           <p className="text-gray-600 mb-6">
             Gracias por registrarte en INNOVA TEC. Estaremos enviando un correo de confirmación a {formData.email} con
             los detalles de tu registro.
-            {formData.pagoEfectivo && (
+            {formData.tipoPago === "E" && (
               <span className="block mt-2 font-medium text-amber-700">
                 Recuerda que debes contactar a los organizadores para realizar el pago en efectivo y finalizar tu
                 registro.
@@ -374,19 +446,19 @@ export function RegistrationForm() {
                 </Label>
                 <RadioGroup
                   value={formData.tipoParticipante}
-                  onValueChange={(value) => handleSelectChange("tipoParticipante", value)}
+                  onValueChange={(value) => handleSelectChange("tipoParticipante", value as ParticipantType)}
                   className="grid grid-cols-1 md:grid-cols-3 gap-4"
                 >
                   <Label
-                    htmlFor="estudiante"
+                    htmlFor="E"
                     className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                      formData.tipoParticipante === "estudiante"
+                      formData.tipoParticipante === "E"
                         ? "border-blue-500 bg-blue-50"
                         : "border-gray-200 hover:border-blue-300"
                     }`}
                   >
                     <div className="flex items-center mb-2">
-                      <RadioGroupItem value="estudiante" id="estudiante" className="mr-2" />
+                      <RadioGroupItem value="E" id="E" className="mr-2" />
                       <span className="font-medium">Estudiante</span>
                     </div>
                     <p className="text-sm text-gray-500 ml-6">
@@ -395,15 +467,15 @@ export function RegistrationForm() {
                   </Label>
 
                   <Label
-                    htmlFor="catedratico"
+                    htmlFor="C"
                     className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                      formData.tipoParticipante === "catedratico"
+                      formData.tipoParticipante === "C"
                         ? "border-blue-500 bg-blue-50"
                         : "border-gray-200 hover:border-blue-300"
                     }`}
                   >
                     <div className="flex items-center mb-2">
-                      <RadioGroupItem value="catedratico" id="catedratico" className="mr-2" />
+                      <RadioGroupItem value="C" id="C" className="mr-2" />
                       <span className="font-medium">Catedrático</span>
                     </div>
                     <p className="text-sm text-gray-500 ml-6">
@@ -412,15 +484,15 @@ export function RegistrationForm() {
                   </Label>
 
                   <Label
-                    htmlFor="invitado"
+                    htmlFor="I"
                     className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                      formData.tipoParticipante === "invitado"
+                      formData.tipoParticipante === "I"
                         ? "border-blue-500 bg-blue-50"
                         : "border-gray-200 hover:border-blue-300"
                     }`}
                   >
                     <div className="flex items-center mb-2">
-                      <RadioGroupItem value="invitado" id="invitado" className="mr-2" />
+                      <RadioGroupItem value="I" id="I" className="mr-2" />
                       <span className="font-medium">Invitado</span>
                     </div>
                     <p className="text-sm text-gray-500 ml-6">
@@ -456,7 +528,7 @@ export function RegistrationForm() {
               </div>
 
               {/* Campos de carnet solo para estudiantes */}
-              {formData.tipoParticipante === "estudiante" && (
+              {formData.tipoParticipante === "E" && (
                 <div>
                   <Label className="flex items-center">
                     Carnet de Estudiante <span className="text-red-500 ml-1">*</span>
@@ -464,21 +536,27 @@ export function RegistrationForm() {
                   <div className="flex space-x-2">
                     <div className="w-1/4">
                       <Input
-                        id="carnetPrefijo"
-                        name="carnetPrefijo"
-                        value={formData.carnetPrefijo}
+                        id="carnetCarrera"
+                        name="carnetCarrera"
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]{1,4}"
+                        value={formData.carnetCarrera}
                         onChange={handleInputChange}
                         placeholder="0000"
-                        className={errors.carnetPrefijo ? "border-red-500" : ""}
+                        className={errors.carnetCarrera ? "border-red-500" : ""}
                         required
                       />
-                      {errors.carnetPrefijo && <p className="text-red-500 text-xs mt-1">{errors.carnetPrefijo}</p>}
+                      {errors.carnetCarrera && <p className="text-red-500 text-xs mt-1">{errors.carnetCarrera}</p>}
                     </div>
                     <div className="flex items-center">-</div>
                     <div className="w-1/5">
                       <Input
                         id="carnetAnio"
                         name="carnetAnio"
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]{2}"
                         value={formData.carnetAnio}
                         onChange={handleInputChange}
                         placeholder="00"
@@ -490,18 +568,21 @@ export function RegistrationForm() {
                     <div className="flex items-center">-</div>
                     <div className="w-2/5">
                       <Input
-                        id="carnetNumero"
-                        name="carnetNumero"
-                        value={formData.carnetNumero}
+                        id="carnetSerie"
+                        name="carnetSerie"
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]{4}"
+                        value={formData.carnetSerie}
                         onChange={handleInputChange}
                         placeholder="0000"
-                        className={errors.carnetNumero ? "border-red-500" : ""}
+                        className={errors.carnetSerie ? "border-red-500" : ""}
                         required
                       />
-                      {errors.carnetNumero && <p className="text-red-500 text-xs mt-1">{errors.carnetNumero}</p>}
+                      {errors.carnetSerie && <p className="text-red-500 text-xs mt-1">{errors.carnetSerie}</p>}
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">Formato: Prefijo-Año-Número (Ejemplo: 1490-19-1745)</p>
+                  <p className="text-xs text-gray-500 mt-1">Formato: Carrera-Año-Serie (Ejemplo: 1490-19-1745)</p>
                 </div>
               )}
 
@@ -534,6 +615,7 @@ export function RegistrationForm() {
                   id="telefono"
                   name="telefono"
                   type="tel"
+                  inputMode="numeric"
                   value={formData.telefono}
                   onChange={handleInputChange}
                   placeholder="Ingrese su número de teléfono"
@@ -569,49 +651,51 @@ export function RegistrationForm() {
 
               {/* Campo para talla de camisa */}
               <div>
-                <Label htmlFor="tallaCamisa" className="flex items-center">
+                <Label htmlFor="talla" className="flex items-center">
                   Talla de Camisa <span className="text-red-500 ml-1">*</span>
                 </Label>
                 <Select
-                  value={formData.tallaCamisa}
-                  onValueChange={(value) => handleSelectChange("tallaCamisa", value)}
+                  value={formData.talla}
+                  onValueChange={(value) => handleSelectChange("talla", value as ShirtSize)}
                 >
-                  <SelectTrigger className={errors.tallaCamisa ? "border-red-500" : ""}>
+                  <SelectTrigger className={errors.talla ? "border-red-500" : ""}>
                     <SelectValue placeholder="Seleccione una talla" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="XS">XS</SelectItem>
                     <SelectItem value="S">S</SelectItem>
                     <SelectItem value="M">M</SelectItem>
                     <SelectItem value="L">L</SelectItem>
                     <SelectItem value="XL">XL</SelectItem>
-                    <SelectItem value="XXL">XXL</SelectItem>
                   </SelectContent>
                 </Select>
-                {errors.tallaCamisa && (
+                {errors.talla && (
                   <p className="text-red-500 text-sm mt-1 flex items-center">
-                    <AlertCircle className="w-4 h-4 mr-1" /> {errors.tallaCamisa}
+                    <AlertCircle className="w-4 h-4 mr-1" /> {errors.talla}
                   </p>
                 )}
               </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="pagoEfectivo"
-                    checked={formData.pagoEfectivo}
-                    onCheckedChange={(checked) => handleCheckboxChange("pagoEfectivo", checked as boolean)}
-                  />
-                  <Label htmlFor="pagoEfectivo" className="text-sm cursor-pointer">
-                    Realizaré el pago en efectivo
-                  </Label>
-                </div>
-                <p className="text-xs text-gray-500">
-                  Seleccione esta opción si prefiere pagar en efectivo directamente a los organizadores.
-                </p>
+              <div>
+                <Label className="flex items-center mb-2">
+                  Método de Pago <span className="text-red-500 ml-1">*</span>
+                </Label>
+                <RadioGroup
+                  value={formData.tipoPago}
+                  onValueChange={(value) => handleSelectChange("tipoPago", value as PaymentType)}
+                  className="space-y-2"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="D" id="deposito" />
+                    <Label htmlFor="deposito">Depósito/Transferencia</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="E" id="efectivo" />
+                    <Label htmlFor="efectivo">Efectivo</Label>
+                  </div>
+                </RadioGroup>
               </div>
 
-              {formData.pagoEfectivo && (
+              {formData.tipoPago === "E" && (
                 <div className="bg-amber-50 border border-amber-200 rounded-md p-4">
                   <div className="flex items-start">
                     <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 mr-3 flex-shrink-0" />
@@ -627,7 +711,7 @@ export function RegistrationForm() {
                 </div>
               )}
 
-              {!formData.pagoEfectivo && (
+              {formData.tipoPago === "D" && (
                 <div>
                   <Label className="flex items-center mb-2">
                     Boleta de Pago <span className="text-red-500 ml-1">*</span>
@@ -688,11 +772,7 @@ export function RegistrationForm() {
                     <div className="py-2 grid grid-cols-3">
                       <dt className="text-sm font-medium text-gray-500">Tipo de Participante</dt>
                       <dd className="text-sm text-gray-900 col-span-2">
-                        {formData.tipoParticipante === "estudiante"
-                          ? "Estudiante"
-                          : formData.tipoParticipante === "catedratico"
-                            ? "Catedrático"
-                            : "Invitado"}
+                        {participantTypeLabels[formData.tipoParticipante]}
                       </dd>
                     </div>
 
@@ -701,7 +781,7 @@ export function RegistrationForm() {
                       <dd className="text-sm text-gray-900 col-span-2">{formData.nombre}</dd>
                     </div>
 
-                    {formData.tipoParticipante === "estudiante" && (
+                    {formData.tipoParticipante === "E" && (
                       <div className="py-2 grid grid-cols-3">
                         <dt className="text-sm font-medium text-gray-500">Carnet</dt>
                         <dd className="text-sm text-gray-900 col-span-2">{getFormattedCarnet()}</dd>
@@ -725,17 +805,17 @@ export function RegistrationForm() {
 
                     <div className="py-2 grid grid-cols-3">
                       <dt className="text-sm font-medium text-gray-500">Talla de Camisa</dt>
-                      <dd className="text-sm text-gray-900 col-span-2">{formData.tallaCamisa || "No seleccionada"}</dd>
+                      <dd className="text-sm text-gray-900 col-span-2">{formData.talla}</dd>
                     </div>
 
                     <div className="py-2 grid grid-cols-3">
                       <dt className="text-sm font-medium text-gray-500">Método de Pago</dt>
                       <dd className="text-sm text-gray-900 col-span-2">
-                        {formData.pagoEfectivo ? "Efectivo (pendiente)" : "Transferencia/Depósito"}
+                        {formData.tipoPago === "E" ? "Efectivo" : "Depósito/Transferencia"}
                       </dd>
                     </div>
 
-                    {!formData.pagoEfectivo && (
+                    {formData.tipoPago === "D" && (
                       <div className="py-2 grid grid-cols-3">
                         <dt className="text-sm font-medium text-gray-500">Boleta de Pago</dt>
                         <dd className="text-sm text-gray-900 col-span-2">
@@ -757,12 +837,6 @@ export function RegistrationForm() {
                         <dd className="text-sm text-gray-900 col-span-2">{formData.rol}</dd>
                       </div>
                     )}
-
-                    {/* Campos específicos según el tipo de participante */}
-                    {formData.tipoParticipante === "catedratico" && (
-                      <>{/* Se eliminan los campos de departamento y cargo */}</>
-                    )}
-
                   </dl>
                 </CardContent>
               </Card>
@@ -805,8 +879,8 @@ export function RegistrationForm() {
                 <ArrowRightIcon className="w-4 h-4 ml-2" />
               </Button>
             ) : (
-              <Button type="submit" className="bg-green-600 hover:bg-green-700">
-                Completar Registro
+              <Button type="submit" className="bg-green-600 hover:bg-green-700" disabled={isSubmitting}>
+                {isSubmitting ? "Enviando..." : "Completar Registro"}
               </Button>
             )}
           </div>
