@@ -26,7 +26,7 @@ type FormData = {
   email: string
   telefono: string
   fechaNacimiento: string
-  boletaPago: File | null
+  boletaPago: string | null //antes era File | null
   institucion: string
   aceptaTerminos: boolean
   tipoPago: PaymentType
@@ -178,10 +178,10 @@ export function RegistrationForm() {
     setTouched((prev) => ({ ...prev, [name]: true }))
   }
 
-  const handleFileChange = (file: File | null) => {
-    setFormData((prev) => ({ ...prev, boletaPago: file }))
+  const handleFileChange = (base64: string | null) => {
+    setFormData((prev) => ({ ...prev, boletaPago: base64 }))
     setTouched((prev) => ({ ...prev, boletaPago: true }))
-  }
+  }  
 
   const nextStep = () => {
     // Marcar todos los campos del paso actual como tocados
@@ -228,7 +228,7 @@ export function RegistrationForm() {
       const telefono = Number(formData.telefono.replace(/\D/g, ""))
 
       // Preparar el nombre del archivo de boleta o string vacío
-      const boleta = formData.boletaPago ? formData.boletaPago.name : ""
+      const boleta = formData.boletaPago || ""
 
       // Llamar a la función createParticipant con los parámetros en el orden correcto
       const response = await api.post("/participants", {
@@ -819,7 +819,7 @@ export function RegistrationForm() {
                       <div className="py-2 grid grid-cols-3">
                         <dt className="text-sm font-medium text-gray-500">Boleta de Pago</dt>
                         <dd className="text-sm text-gray-900 col-span-2">
-                          {formData.boletaPago ? formData.boletaPago.name : "No se ha subido archivo"}
+                          {formData.boletaPago ? "Archivo cargado correctamente" : "No se ha subido archivo"}
                         </dd>
                       </div>
                     )}

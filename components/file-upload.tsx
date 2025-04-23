@@ -6,12 +6,21 @@ import { UploadCloud, File, X, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface FileUploadProps {
-  onFileChange: (file: File | null) => void
-  value: File | null
+  onFileChange: (file: string | null) => void // Base64 en vez de File
+  value: string | null
   error?: string
   accept?: Record<string, string[]>
   maxSize?: number
   label?: string
+}
+
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = (error) => reject(error)
+  })
 }
 
 export function FileUpload({
@@ -23,19 +32,20 @@ export function FileUpload({
     "image/jpeg": [".jpg", ".jpeg"],
     "image/png": [".png"],
   },
-  maxSize = 20 * 1024 * 1024, // 20MB
+  maxSize = 200 * 1024 * 1024, // 30MB
   label = "Subir archivo",
 }: FileUploadProps) {
   const [fileError, setFileError] = useState<string | null>(null)
 
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
+    async (acceptedFiles: File[]) => {
       setFileError(null)
       if (acceptedFiles.length > 0) {
-        onFileChange(acceptedFiles[0])
+        const base64 = await fileToBase64(acceptedFiles[0])
+        onFileChange(base64)
       }
     },
-    [onFileChange],
+    [onFileChange]
   )
 
   const { getRootProps, getInputProps, isDragActive, fileRejections } = useDropzone({
@@ -77,32 +87,36 @@ export function FileUpload({
         <input {...getInputProps()} />
 
         {value ? (
-          <div className="w-full">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
-              <div className="flex items-center space-x-3">
-                <div className="p-2 bg-blue-100 rounded-md">
-                  <File className="h-6 w-6 text-blue-600" />
+            <div className="w-full">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-blue-100 rounded-md">
+                    <File className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium truncate max-w-[200px]">
+                      Imagen cargada
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {(value.length / 1024).toFixed(1)} KB aprox
+                    </span>
+                  </div>
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium truncate max-w-[200px]">{value.name}</span>
-                  <span className="text-xs text-gray-500">{formatFileSize(value.size)}</span>
-                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onFileChange(null)
+                  }}
+                  className="text-gray-500 hover:text-red-500"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onFileChange(null)
-                }}
-                className="text-gray-500 hover:text-red-500"
-              >
-                <X className="h-4 w-4" />
-              </Button>
             </div>
-          </div>
-        ) : (
+          ) : (
           <>
             <div className="p-3 bg-blue-50 rounded-full mb-4">
               <UploadCloud className="h-8 w-8 text-blue-600" />
