@@ -28,7 +28,6 @@ export function FileUpload({
   value,
   error,
   accept = {
-    "application/pdf": [".pdf"],
     "image/jpeg": [".jpg", ".jpeg"],
     "image/png": [".png"],
   },
@@ -62,7 +61,7 @@ export function FileUpload({
       if (rejection.errors[0].code === "file-too-large") {
         setFileError(`El archivo es demasiado grande. Tamaño máximo: ${(maxSize / 1024 / 1024).toFixed(0)}MB`)
       } else if (rejection.errors[0].code === "file-invalid-type") {
-        setFileError("Tipo de archivo no válido. Por favor, sube un PDF, JPG o PNG")
+        setFileError("Tipo de archivo no válido. Por favor, sube un JPG o PNG")
       } else {
         setFileError(rejection.errors[0].message)
       }
